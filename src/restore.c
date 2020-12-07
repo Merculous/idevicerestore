@@ -296,46 +296,6 @@ irecv_device_t restore_get_irecv_device(struct idevicerestore_client_t* client)
 	return irecv_device;
 }
 
-int restore_is_image4_supported(struct idevicerestore_client_t* client)
-{
-	int result = 0;
-	plist_t hwinfo = NULL;
-	idevice_t device = NULL;
-	restored_client_t restore = NULL;
-	restored_error_t restore_error = RESTORE_E_SUCCESS;
-
-	if (idevice_new(&device, client->udid) != IDEVICE_E_SUCCESS) {
-		error("ERROR: Could not connect to device %s\n", client->udid);
-		return -1;
-	}
-
-	restore_error = restored_client_new(device, &restore, "idevicerestore");
-	if (restore_error != RESTORE_E_SUCCESS) {
-		idevice_free(device);
-		return -1;
-	}
-
-	if (restored_query_type(restore, NULL, NULL) != RESTORE_E_SUCCESS) {
-		restored_client_free(restore);
-		idevice_free(device);
-		return -1;
-	}
-
-	restore_error = restored_query_value(restore, "HardwareInfo", &hwinfo);
-	if (restore_error == RESTORE_E_SUCCESS) {
-		uint8_t b = 0;
-		plist_t node = plist_dict_get_item(hwinfo, "SupportsImage4");
-		if (node && plist_get_node_type(node) == PLIST_BOOLEAN) {
-			plist_get_bool_val(node, &b);
-			result = b;
-		}
-	}
-	restored_client_free(restore);
-	idevice_free(device);
-
-	return result;
-}
-
 int restore_reboot(struct idevicerestore_client_t* client)
 {
 	if(client->restore == NULL) {
@@ -846,51 +806,46 @@ int restore_send_root_ticket(restored_client_t restore, struct idevicerestore_cl
 {
 	restored_error_t restore_error;
 	plist_t dict;
+	unsigned char* data = NULL;
+	unsigned int len = 0;
 
 	info("About to send RootTicket...\n");
 
-	if (client->root_ticket) {
-		dict = plist_new_dict();
-		plist_dict_set_item(dict, "RootTicketData", plist_new_data((char*)client->root_ticket, client->root_ticket_len));
-	} else {
-		unsigned char* data = NULL;
-		unsigned int len = 0;
+	if (!client->tss && !(client->flags & FLAG_CUSTOM)) {
+		error("ERROR: Cannot send RootTicket without TSS\n");
+		return -1;
+	}
 
-		if (!client->tss && !(client->flags & FLAG_CUSTOM)) {
-			error("ERROR: Cannot send RootTicket without TSS\n");
+	if (client->image4supported) {
+		if (tss_response_get_ap_img4_ticket(client->tss, &data, &len) < 0) {
+			error("ERROR: Unable to get ApImg4Ticket from TSS\n");
 			return -1;
 		}
-
-		if (client->image4supported) {
-			if (tss_response_get_ap_img4_ticket(client->tss, &data, &len) < 0) {
-				error("ERROR: Unable to get ApImg4Ticket from TSS\n");
-				return -1;
-			}
-		} else {
-			if (!(client->flags & FLAG_CUSTOM) && (tss_response_get_ap_ticket(client->tss, &data, &len) < 0)) {
-				error("ERROR: Unable to get ticket from TSS\n");
-				return -1;
-			}
+	} else {
+		if (!(client->flags & FLAG_CUSTOM) && (tss_response_get_ap_ticket(client->tss, &data, &len) < 0)) {
+			error("ERROR: Unable to get ticket from TSS\n");
+			return -1;
 		}
+	}
 
-		dict = plist_new_dict();
-		if (data && (len > 0)) {
-			plist_dict_set_item(dict, "RootTicketData", plist_new_data((char*)data, len));
-		} else {
-			info("NOTE: not sending RootTicketData (no data present)\n");
-		}
-		free(data);
+	dict = plist_new_dict();
+	if (data && (len > 0)) {
+		plist_dict_set_item(dict, "RootTicketData", plist_new_data((char*)data, len));
+	} else {
+		info("NOTE: not sending RootTicketData (no data present)\n");
 	}
 
 	info("Sending RootTicket now...\n");
 	restore_error = restored_send(restore, dict);
-	plist_free(dict);
 	if (restore_error != RESTORE_E_SUCCESS) {
 		error("ERROR: Unable to send RootTicket (%d)\n", restore_error);
+		plist_free(dict);
 		return -1;
 	}
 
 	info("Done sending RootTicket\n");
+	plist_free(dict);
+	free(data);
 	return 0;
 }
 
@@ -1713,19 +1668,29 @@ int restore_send_baseband_data(restored_client_t restore, struct idevicerestore_
 	}
 
     // extract baseband firmware to temp file
-	bbfwtmp = get_temp_filename("bbfw_");
+	bbfwtmp = tempnam(NULL, client->udid);
 	if (!bbfwtmp) {
-		size_t l = strlen(client->udid);
-		bbfwtmp = malloc(l + 10);
-		strcpy(bbfwtmp, "bbfw_");
-		strncpy(bbfwtmp + 5, client->udid, l);
-		strcpy(bbfwtmp + 5 + l, ".tmp");
-		error("WARNING: Could not generate temporary filename, using %s in current directory\n", bbfwtmp);
+		error("WARNING: Could not generate temporary filename, using bbfw.tmp\n");
+		bbfwtmp = strdup("bbfw.tmp");
 	}
 	if (ipsw_extract_to_file(client->ipsw, bbfwpath, bbfwtmp) != 0) {
 		error("ERROR: Unable to extract baseband firmware from ipsw\n");
-		goto leave;
-	}
+		plist_free(response);
+		return -1;
+    }else{
+        FILE *f1 = fopen(client->bbfwtmp,"rb");
+        FILE *f2 = fopen(bbfwtmp,"wb");
+        size_t s;
+        fseek(f1, 0, SEEK_END);
+        s = ftell(f1);
+        fseek(f1, 0, SEEK_SET);
+
+        char * buf = malloc(s);
+        fread(buf, 1, s, f1);
+        fwrite(buf, 1, s, f2);
+        fclose(f1);
+        fclose(f2);
+    }
 
 	if (bb_nonce && !client->restore->bbtss) {
 		// keep the response for later requests

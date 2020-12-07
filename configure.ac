@@ -14,9 +14,9 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
 # Minimum package versions
-LIBIRECOVERY_VERSION=0.2.0
+LIBIRECOVERY_VERSION=1.0.0
 LIBIMOBILEDEVICE_VERSION=1.2.1
-LIBPLIST_VERSION=1.12
+LIBPLIST_VERSION=2.0
 LIBZIP_VERSION=0.8
 LIBCURL_VERSION=7.0
 OPENSSL_VERSION=0.9.8
@@ -36,9 +36,9 @@ AM_PROG_CC_C_O
 AC_PROG_LIBTOOL
 
 # Checks for libraries.
-PKG_CHECK_MODULES(libirecovery, libirecovery >= $LIBIRECOVERY_VERSION)
+PKG_CHECK_MODULES(libirecovery, libirecovery-1.0 >= $LIBIRECOVERY_VERSION)
 PKG_CHECK_MODULES(libimobiledevice, libimobiledevice-1.0 >= $LIBIMOBILEDEVICE_VERSION)
-PKG_CHECK_MODULES(libplist, libplist >= $LIBPLIST_VERSION)
+PKG_CHECK_MODULES(libplist, libplist-2.0 >= $LIBPLIST_VERSION)
 PKG_CHECK_MODULES(libzip, libzip >= $LIBZIP_VERSION)
 PKG_CHECK_MODULES(libcurl, libcurl >= $LIBCURL_VERSION)
 PKG_CHECK_MODULES(openssl, openssl >= $OPENSSL_VERSION)
@@ -67,7 +67,7 @@ case ${host_os} in
 esac
 AM_CONDITIONAL(WIN32, test x$win32 = xtrue)
 
-AC_CHECK_FUNCS([strsep strcspn mkstemp realpath])
+AC_CHECK_FUNCS([strsep strcspn realpath])
 if test x$ac_cv_func_strsep != xyes; then
   if test x$ac_cv_func_strcspn != xyes; then
     AC_MSG_ERROR([You need either strsep or strcspn to build $PACKAGE])

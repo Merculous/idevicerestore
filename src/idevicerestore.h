@@ -48,7 +48,6 @@ extern "C" {
 #define FLAG_BOOT            (1 << 12)
 #define FLAG_PANICLOG        (1 << 13)
 #define FLAG_NOBOOTX         (1 << 14)
-#define FLAG_ALLOW_RESTORE_MODE (1 << 15)
 
 struct idevicerestore_client_t;
 

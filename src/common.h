@@ -111,8 +111,6 @@ struct idevicerestore_client_t {
 	int build_major;
 	char* restore_boot_args;
 	char* cache_dir;
-	unsigned char* root_ticket;
-	int root_ticket_len;
 	idevicerestore_progress_cb_t progress_cb;
 	void* progress_cb_data;
     void (*recovery_custom_component_function)(struct idevicerestore_client_t*, plist_t, const char*, unsigned char**, unsigned int *);
@@ -157,8 +155,6 @@ char *generate_guid(void);
 #endif
 
 int mkdir_with_parents(const char *dir, int mode);
-
-char *get_temp_filename(const char *prefix);
 
 void idevicerestore_progress(struct idevicerestore_client_t* client, int step, double progress);
 

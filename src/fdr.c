@@ -480,8 +480,7 @@ static int fdr_handle_plist_cmd(fdr_client_t fdr)
 	}
 
 	free(command);
-	/* FDR connection will be terminated remotely. Next receive will get nothing, error and terminate this worker thread. */
-	return 0;
+	return 1; /* should terminate thread */
 }
 
 static int fdr_handle_proxy_cmd(fdr_client_t fdr)
